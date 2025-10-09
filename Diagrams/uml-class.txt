@@ -1,0 +1,56 @@
+@startuml
+
+' Classes
+class User {
+    - id: Long
+    - displayName: String
+    - username: String
+    - password: String
+    - email: String
+    - isLoggedIn: Boolean
+    
+    resetPassword()
+}
+
+class Product {
+    - productId: Long
+    - color: String
+    - size: Double
+    - quantity: Integer
+    - price: Double
+    - reviews: List<Review>
+}
+
+class ProductInventory {
+    - products: List<Product>
+    
+    addProduct(Product product)
+    removeProduct(Long productId)
+    editProduct(Long productId)
+    viewProducts()
+}
+
+class Review {
+    - rating: Integer
+    - description: String
+}
+
+class Cart {
+    - cart: List<Product>
+    - totalPrice: Double
+}
+
+class Order {
+    - orderId: Long
+    - items: List<Product>
+}
+
+' Relationships
+Product "1" *-- "*" Review
+ProductInventory "1" o-- "*" Product
+User "1" -- "1" ProductInventory
+User "1" -- "1" Cart
+Cart -- Order
+Product "1" *-- "*" Order
+
+@enduml

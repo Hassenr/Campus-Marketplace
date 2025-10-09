@@ -1,0 +1,24 @@
+@startuml
+
+'Products
+User -> ProductInventory: Lists a product for sale
+ProductInventory -> Product: Creates a Product
+
+User -> ProductInventory: Edits a product
+ProductInventory -> Product: Edits product details
+
+User -> ProductInventory: Deletes a product
+ProductInventory -> Product: Deletes product
+
+'Cart
+User -> Cart: Views the cart
+Cart -> User: User can see products in cart
+
+User -> Product: Adds item to cart
+Product -> Cart: Adds Item to cart
+
+User -> Cart: Edits items in cart
+
+User -> Cart: Remove item from cart
+
+@enduml
