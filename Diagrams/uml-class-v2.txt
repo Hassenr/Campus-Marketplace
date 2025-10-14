@@ -1,0 +1,51 @@
+@startuml
+
+' Classes
+class User {
+    - id: Long
+    - displayName: String
+    - username: String
+    - password: String
+    - email: String
+    
+    resetPassword()
+}
+
+class Post {
+    - PostId: Long
+    - itemCategory: String
+    - Description: String 
+    - photoUrl: String
+    - askingPrice: Double
+    - Dimensions: String
+    - owner: User
+    - status: String
+}
+
+class PostRepository {
+    addProduct(Post post)
+    removeProduct(Long postId)
+    editProduct(Long postId)
+    getAllPostings()
+}
+
+Class Message {
+    -to: User
+    -from: User
+    -post: Post
+    -message: String
+    -timeSent: Date
+}
+
+Class MessageRepository {
+    -sendMessage(Message message)
+    -getConversation(long postid)
+}
+' Relationships
+User "1" --o "*" Post
+Post  o--  PostRepository
+User --o Message
+MessageRepository --o Message
+
+
+@enduml
