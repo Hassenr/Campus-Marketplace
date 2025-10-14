@@ -1,4 +1,4 @@
 
 export default function Page() {
-    return <p>Products Page</p>;
+    return <p>Dashboard Page</p>;
 }
