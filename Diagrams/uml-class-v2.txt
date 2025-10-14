@@ -23,9 +23,9 @@ class Post {
 }
 
 class PostRepository {
-    addProduct(Post post)
-    removeProduct(Long postId)
-    editProduct(Long postId)
+    addPost(Post post)
+    removePost(Long postId)
+    editPost(Long postId)
     getAllPostings()
 }
 
@@ -44,7 +44,7 @@ Class MessageRepository {
 ' Relationships
 User "1" --o "*" Post
 Post  o--  PostRepository
-User --o Message
+User --o"*" Message
 MessageRepository --o Message
 
 
