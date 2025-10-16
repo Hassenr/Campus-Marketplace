@@ -19,12 +19,15 @@ public class Post {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     private String title;
     private String description;
     private Double askingPrice;
     private String category;
     private String imageUrl;
+
     @ManyToOne
     @JoinColumn(name = "owner_id")
+
     private User Owner;
 }
