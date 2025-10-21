@@ -1,0 +1,63 @@
+workspace "Campus Marketplace" {
+
+    !identifiers hierarchical
+
+    model {
+        b = person "Buyer"
+        s = person "Seller"
+        a = person "Admin"
+
+        cm = softwareSystem "Campus Marketplace" {
+            wa = container "Web App / UI"
+            pr = container "Post Repository"
+            mr = container "Message Repository"
+            db = container "Database"
+        }
+
+        b -> cm.wa "Browse listings & send message"
+        s -> cm.wa "Create / manage posts"
+        a -> cm.wa "Moderate"
+
+        cm.wa -> cm.pr "addPost / editPost / removePost / getAllPostings()"
+        cm.pr -> cm.db "Read / Write Posts"
+
+        cm.wa -> cm.mr "sendMessage() / getConversation(postId)"
+        cm.mr -> cm.db "Read / Write Messages"
+
+        cm.wa -> s "Notify: new message"
+        cm.wa -> b "Show thread / updates"
+    }
+
+    views {
+        systemContext cm "Diagram1" {
+            include *
+            autolayout lr
+        }
+
+        container cm "Diagram2" {
+            include *
+            autolayout lr
+        }
+
+        styles {
+            element "Element" {
+                color #0773af
+                stroke #0773af
+                strokeWidth 7
+                shape roundedbox
+            }
+            element "Person" {
+                shape person
+            }
+            element "Database" {
+                shape cylinder
+            }
+            element "Boundary" {
+                strokeWidth 5
+            }
+            relationship "Relationship" {
+                thickness 4
+            }
+        }
+    }
+}
