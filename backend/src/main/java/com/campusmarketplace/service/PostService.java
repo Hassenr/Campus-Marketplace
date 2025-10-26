@@ -37,7 +37,7 @@ public class PostService {
 
         existingPost.setTitle(updatedPost.getTitle());
         existingPost.setDescription(updatedPost.getDescription());
-        existingPost.setPrice(updatedPost.getPrice());
+        existingPost.setAskingPrice(updatedPost.getAskingPrice());
         existingPost.setImageUrl(updatedPost.getImageUrl());
         existingPost.setCategory(updatedPost.getCategory());
 
