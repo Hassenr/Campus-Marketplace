@@ -38,8 +38,8 @@ public class PostService {
         existingPost.setTitle(updatedPost.getTitle());
         existingPost.setDescription(updatedPost.getDescription());
         existingPost.setAskingPrice(updatedPost.getAskingPrice());
-        existingPost.setImageUrl(updatedPost.getImageUrl());
         existingPost.setCategory(updatedPost.getCategory());
+        existingPost.setImageUrl(updatedPost.getImageUrl());
 
         return postRepository.save(existingPost);
     }
