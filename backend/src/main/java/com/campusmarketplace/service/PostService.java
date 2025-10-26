@@ -1,61 +1,55 @@
 package com.campusmarketplace.service;
 
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import com.campusmarketplace.Entity.Post;
+import com.campusmarketplace.repository.PostRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
-@Transactional
 public class PostService {
 
-    private final PostRepository repo;
+    private final PostRepository postRepository;
 
-    public PostService(PostRepository repo) {
-        this.repo = repo;
+    public PostService(PostRepository postRepository) {
+        this.postRepository = postRepository;
     }
 
-    // CREATE
-    public Post create(Post post) {
-        return repo.save(post);
+    public List<Post> getAllPosts() {
+        return postRepository.findAll();
     }
 
-    // READ
-    @Transactional(readOnly = true)
-    public Post getById(Long id) {
-        return repo.findById(id).orElseThrow(() -> new RuntimeException("Post not found: " + id));
+    public Post getPostById(Long id) {
+        return postRepository.findById(id).get();
     }
 
-    @Transactional(readOnly = true)
-    public Page<Post> getAll(Pageable pageable) {
-        return repo.findAll(pageable);
+    public Post addPost(Post post) {
+        return postRepository.save(post);
     }
 
-    @Transactional(readOnly = true)
-    public Page<Post> searchByTitle(String q, Pageable pageable) {
-        return repo.findByTitleContainingIgnoreCase(q, pageable);
+    public Post updatePost(Long postId, Post updatedPost) {
+
+        if (!postRepository.existsById(postId)) {
+            throw new RuntimeException("Post not found with id: " + postId);
+        }
+
+        Post existingPost = postRepository.findById(postId).get();
+
+        existingPost.setTitle(updatedPost.getTitle());
+        existingPost.setDescription(updatedPost.getDescription());
+        existingPost.setPrice(updatedPost.getPrice());
+        existingPost.setImageUrl(updatedPost.getImageUrl());
+        existingPost.setCategory(updatedPost.getCategory());
+
+        return postRepository.save(existingPost);
     }
 
-    @Transactional(readOnly = true)
-    public Page<Post> getByCategory(String category, Pageable pageable) {
-        return repo.findByCategoryIgnoreCase(category, pageable);
-    }
+    public void deletePost(Long postId) {
+        if (!postRepository.existsById(postId)) {
+            throw new RuntimeException("Post not found with id: " + postId);
+        }
 
-    // UPDATE (patch-style)
-    public Post update(Long id, Post patch) {
-        Post p = getById(id);
-        if (patch.getTitle() != null) p.setTitle(patch.getTitle());
-        if (patch.getDescription() != null) p.setDescription(patch.getDescription());
-        if (patch.getPrice() != null) p.setPrice(patch.getPrice());
-        if (patch.getCategory() != null) p.setCategory(patch.getCategory());
-        return repo.save(p);
-    }
-
-    // DELETE
-    public void delete(Long id) {
-        if (!repo.existsById(id)) throw new RuntimeException("Post not found: " + id);
-        repo.deleteById(id);
+        postRepository.deleteById(postId);
     }
 }
 
