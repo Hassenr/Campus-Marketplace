@@ -19,10 +19,10 @@ public class SupabaseS3Test implements CommandLineRunner {
     @Value("${supabase.s3.endpoint}")
     private String endpoint;
 
-    @Value("${supabase.s3.access-key}")
+    @Value("${SUPABASE_S3_ACCESS_KEY}")
     private String accessKey;
 
-    @Value("${supabase.s3.secret-key}")
+    @Value("${SUPABASE_S3_SECRET_KEY}")
     private String secretKey;
 
     @Override
