@@ -2,6 +2,7 @@ package com.campusmarketplace.service;
 
 import com.campusmarketplace.Entity.User;
 import com.campusmarketplace.repository.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -10,9 +11,11 @@ import java.util.List;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
     public List<User> getAllUsers() {
         return userRepository.findAll();
@@ -24,12 +27,28 @@ public class UserService {
     }
 
     public User addUser(User user) {
-        // Check for existing user before saving
         if (userRepository.existsByUsername(user.getUsername())) {
-            throw new RuntimeException("User already exists with email: " + user.getUsername());
+            throw new RuntimeException("User already exists with username: " + user.getUsername());
         }
+        // Hash password before saving
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         return userRepository.save(user);
     }
+
+    public User registerUser(String username, String password, String email, String college) {
+        if (userRepository.existsByUsername(username)) {
+            throw new RuntimeException("User already exists with username: " + username);
+        }
+
+        User user = new User();
+        user.setUsername(username);
+        user.setPassword(passwordEncoder.encode(password));
+        user.setEmail(email);
+        user.setCollege(college);
+
+        return userRepository.save(user);
+    }
+
 
     public User getUserByUsername(String username) {
         //this will return null if user not found
@@ -64,6 +83,14 @@ public class UserService {
             throw new RuntimeException("User not found with id: " + userId);
         }
         userRepository.deleteById(userId);
+    }
+
+    public boolean verifyCredentials(String username, String rawPassword) {
+        User user = userRepository.findByUsername(username);
+        if (user == null) {
+            return false;
+        }
+        return passwordEncoder.matches(rawPassword, user.getPassword());
     }
 
 
