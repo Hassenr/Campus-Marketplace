@@ -3,14 +3,8 @@ package com.campusmarketplace.controller;
 import com.campusmarketplace.Entity.Post;
 import com.campusmarketplace.service.PostService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -24,13 +18,11 @@ public class PostController {
         this.postService = postService;
     }
 
-    // GET /api/posts
     @GetMapping
     public List<Post> getAllPosts() {
         return postService.getAllPosts();
     }
 
-    // GET /api/posts/{postId}
     @GetMapping("/{postId}")
     public ResponseEntity<Post> getPostById(@PathVariable Long postId) {
         try {
@@ -41,29 +33,37 @@ public class PostController {
         }
     }
 
-    // POST /api/posts
-    @PostMapping
-    public ResponseEntity<Post> addPost(@RequestBody Post post) {
+    @PostMapping(consumes = "multipart/form-data")
+    public ResponseEntity<Post> addPost(
+            @RequestParam("title") String title,
+            @RequestParam("description") String description,
+            @RequestParam("askingPrice") Double askingPrice,
+            @RequestParam("category") String category,
+            @RequestParam(value = "image", required = false) MultipartFile image) {
         try {
-            Post saved = postService.addPost(post);
+            Post saved = postService.addPost(title, description, askingPrice, category, image);
             return ResponseEntity.ok(saved);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    // PUT /api/posts/{postId}
-    @PutMapping("/{postId}")
-    public ResponseEntity<Post> updatePost(@PathVariable Long postId, @RequestBody Post updatedPost) {
+    @PutMapping(value = "/{postId}", consumes = "multipart/form-data")
+    public ResponseEntity<Post> updatePost(
+            @PathVariable Long postId,
+            @RequestParam("title") String title,
+            @RequestParam("description") String description,
+            @RequestParam("askingPrice") Double askingPrice,
+            @RequestParam("category") String category,
+            @RequestParam(value = "image", required = false) MultipartFile image) {
         try {
-            Post saved = postService.updatePost(postId, updatedPost);
+            Post saved = postService.updatePost(postId, title, description, askingPrice, category, image);
             return ResponseEntity.ok(saved);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    // DELETE /api/posts/{postId}
     @DeleteMapping("/{postId}")
     public ResponseEntity<Void> deletePost(@PathVariable Long postId) {
         try {
