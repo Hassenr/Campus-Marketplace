@@ -1,5 +1,6 @@
 package com.campusmarketplace;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -7,7 +8,16 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class CampusMarketplaceApplication {
 
     public static void main(String[] args) {
+        // Load .env file before starting Spring Boot
+        Dotenv dotenv = Dotenv.configure()
+                .directory("./")
+                .ignoreIfMissing()
+                .load();
+
+        dotenv.entries().forEach(entry -> {
+            System.setProperty(entry.getKey(), entry.getValue());
+        });
+
         SpringApplication.run(CampusMarketplaceApplication.class, args);
     }
-
 }
