@@ -3,18 +3,7 @@
 import { useEffect, useState } from "react";
 
 // Type definitions based on backend Post entity
-interface Post {
-  id: number;
-  title: string;
-  description: string;
-  askingPrice: number;
-  category: string;
-  imageUrl: string;
-  Owner: {
-    username: string;
-    email: string;
-  };
-}
+import { Post } from '@/src/types/post';
 
 export interface PostCardProps {
   post: Post;
