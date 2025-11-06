@@ -8,7 +8,7 @@ export default function Header() {
   const messageCount = 5; // Placeholder for actual state
   
   //useState for user authentication state could be added here in the future
-  const isAuthenticated = false; // Placeholder for actual state
+  const isAuthenticated = true; // Placeholder for actual state
 
   return (
     <header className="bg-white shadow-md sticky top-0 z-10">
@@ -34,7 +34,7 @@ export default function Header() {
               <Link href="/dashboard/message" className="text-gray-600 hover:text-gray-900 flex items-center">
                 Messages ({messageCount})
               </Link>
-              <Link href="/login" className="text-gray-600 hover:text-gray-900">
+              <Link href="/" className="text-gray-600 hover:text-gray-900">
                 Sign Out
               </Link>
             </>
