@@ -1,0 +1,44 @@
+@startuml
+left to right direction
+skinparam actorStyle awesome
+
+' humans (left)
+
+actor Buyer
+actor Seller
+
+
+' services (will sit on the right once we point arrows rightward)
+actor "Payment Provider" as PSP
+actor "Email/SMS Gateway" as MsgSvc
+
+' system
+rectangle "Campus Marketplace" as SYS {
+  (Login) as Log
+  (Browse Products) as Browse
+  (Purchase Products) as Purchase
+  (Post Product) as Post
+  (Buyer-Seller Messaging) as Chat
+  (Create Order) as CreateOrder
+  (Process Payment) as ProcPay
+  (Send Order Updates) as SendUpdates
+}
+
+' left-side associations
+Buyer  --> Log
+Buyer  --> Browse
+Buyer  --> Purchase
+Buyer  --> Chat
+Seller --> Log
+Seller --> Post
+Seller --> Chat
+
+' right-side placement by arrow direction
+ProcPay     -right-> PSP
+SendUpdates -right-> MsgSvc
+
+' structure
+Purchase .> CreateOrder  : <<include>>
+Purchase .> ProcPay      : <<include>>
+CreateOrder .> SendUpdates : <<include>>
+@enduml
