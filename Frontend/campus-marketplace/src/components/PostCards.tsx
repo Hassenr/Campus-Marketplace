@@ -20,7 +20,7 @@ export default function PostCard({ post, onViewDetails, onMessage }: PostCardPro
       <div
         className="h-[170px] rounded-lg bg-cover bg-center mb-3"
         style={{
-          backgroundImage: `url(${post.imageUrl || 'https://via.placeholder.com/400x260?text=No+Image'})`,
+          backgroundImage: `url(${post.imageUrl})`,
         }}
         role="img"
         aria-label={post.title}
@@ -37,7 +37,7 @@ export default function PostCard({ post, onViewDetails, onMessage }: PostCardPro
         {post.description}
       </p>
       <div className="text-xs text-gray-500 mb-3">
-        Posted by: {post.Owner.username}
+        Posted by: {"test"}
       </div>
       <div className="flex gap-2">
         <button
