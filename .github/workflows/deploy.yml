@@ -31,6 +31,8 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           source: "backend/target/*.jar"
           target: "/home/ec2-user/app.jar"
+          overwrite: true
+
 
       - name: Restart Spring Boot App
         uses: appleboy/ssh-action@v0.1.10
