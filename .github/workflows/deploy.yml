@@ -95,5 +95,5 @@ jobs:
 
             echo "✅ Deploy step completed."
             exit 0
-        # If you *really* want the workflow to stay green even if the SSH step returns non-zero:
-        # continue-on-error: true
+            continue-on-error: true
+    
