@@ -7,7 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: backend   # <-- pulls SPRING_DATASOURCE_PASSWORD / SUPABASE_* from the 'backend' environment
+    environment: backend
 
     steps:
       - name: Checkout code
@@ -22,6 +22,18 @@ jobs:
       - name: Build backend JAR
         working-directory: backend
         run: mvn clean package -DskipTests
+
+      # NEW: ensure the target dir exists (avoids scp failing with "process exited 1")
+      - name: Prepare EC2
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script_stop: false
+          script: |
+            mkdir -p /home/ec2-user/app
+            chmod 755 /home/ec2-user/app
 
       - name: Copy JAR to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -43,41 +55,45 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          # leave false so a single non-zero line doesn't fail the whole step
-          script_stop: false
+          script_stop: false   # don't fail the step on the first non-zero command
           script: |
             #!/usr/bin/env bash
-            set -u  # (no -e/-o pipefail so benign non-zero exits don't kill the step)
+            set -u # (no -e / no pipefail to avoid false negatives)
 
-            mkdir -p /home/ec2-user/app
+            APP_DIR=/home/ec2-user/app
+            mkdir -p "$APP_DIR"
 
-            # Find the most recent jar (avoid failing when glob temporarily has no match)
-            LATEST_JAR="$(ls -1t /home/ec2-user/app/*.jar 2>/dev/null | head -n1 || true)"
+            # Find most recent jar
+            LATEST_JAR="$(ls -1t "$APP_DIR"/*.jar 2>/dev/null | head -n1 || true)"
             if [[ -z "${LATEST_JAR:-}" ]]; then
-              echo "No JAR found in /home/ec2-user/app after scp. Aborting."
+              echo "No JAR found in $APP_DIR after scp. Aborting."
               exit 1
             fi
-            cp -f "$LATEST_JAR" /home/ec2-user/app/app.jar || { echo "Copy failed"; exit 1; }
 
-            # Write env file from GH environment secrets (quoted safely)
-            cat > /home/ec2-user/app/app.env <<'EOF'
+            # Normalize to app.jar
+            cp -f "$LATEST_JAR" "$APP_DIR/app.jar" || { echo "Copy failed"; exit 1; }
+
+            # Write env file from GH environment secrets (safe quoting)
+            cat > "$APP_DIR/app.env" <<'EOF'
             SPRING_DATASOURCE_PASSWORD='${SPRING_DATASOURCE_PASSWORD}'
             SUPABASE_S3_ACCESS_KEY='${SUPABASE_S3_ACCESS_KEY}'
             SUPABASE_S3_SECRET_KEY='${SUPABASE_S3_SECRET_KEY}'
             EOF
-            chmod 600 /home/ec2-user/app/app.env
+            chmod 600 "$APP_DIR/app.env"
 
-            # Stop old process if running (pkill returns non-zero if nothing matched—ignore it)
-            pkill -f 'java -jar /home/ec2-user/app/app.jar' || true
+            # Stop previous process (ignore if not running)
+            pkill -f "java -jar $APP_DIR/app.jar" || true
 
-            # Start app
-            cd /home/ec2-user/app
-            set -a; . /home/ec2-user/app/app.env; set +a
-            nohup java -jar /home/ec2-user/app/app.jar > app.log 2>&1 &
+            # Start
+            cd "$APP_DIR"
+            set -a; . "$APP_DIR/app.env"; set +a
+            nohup java -jar "$APP_DIR/app.jar" > app.log 2>&1 &
 
-            # Give it a moment to write logs, then try to print them; ignore if missing
+            # brief wait, then try to print logs (ignore if not ready)
             sleep 2
             tail -n 50 app.log || true
 
             echo "✅ Deploy step completed."
             exit 0
+        # If you *really* want the workflow to stay green even if the SSH step returns non-zero:
+        # continue-on-error: true
