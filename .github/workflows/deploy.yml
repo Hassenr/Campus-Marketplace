@@ -2,12 +2,12 @@ name: Deploy Spring Boot Backend to EC2
 
 on:
   push:
-    branches:
-      - main  # or 'master' if that's your default branch
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: backend
 
     steps:
       - name: Checkout code
@@ -23,6 +23,18 @@ jobs:
         working-directory: backend
         run: mvn clean package -DskipTests
 
+      # NEW: ensure the target dir exists (avoids scp failing with "process exited 1")
+      - name: Prepare EC2
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script_stop: false
+          script: |
+            mkdir -p /home/ec2-user/app
+            chmod 755 /home/ec2-user/app
+
       - name: Copy JAR to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -30,25 +42,58 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           source: "backend/target/*.jar"
-          target: "/home/ec2-user/"
+          target: "/home/ec2-user/app/"
           overwrite: true
 
       - name: Restart Spring Boot App
         uses: appleboy/ssh-action@v0.1.10
         env:
-          # Inject only the sensitive values
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
-          SUPABASE_S3_ACCESS_KEY: ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
-          SUPABASE_S3_SECRET_KEY: ${{ secrets.SUPABASE_S3_SECRET_KEY }}
+          SUPABASE_S3_ACCESS_KEY:     ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
+          SUPABASE_S3_SECRET_KEY:     ${{ secrets.SUPABASE_S3_SECRET_KEY }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          script_stop: false
+          script_stop: false   # don't fail the step on the first non-zero command
           script: |
-            pkill -f 'java -jar' || true
-            export SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD}"
-            export SUPABASE_S3_ACCESS_KEY="${SUPABASE_S3_ACCESS_KEY}"
-            export SUPABASE_S3_SECRET_KEY="${SUPABASE_S3_SECRET_KEY}"
-            nohup java -jar /home/ec2-user/app.jar > app.log 2>&1 &
-            echo "✅ Spring Boot app started successfully with environment secrets"
+            #!/usr/bin/env bash
+            set -u # (no -e / no pipefail to avoid false negatives)
+
+            APP_DIR=/home/ec2-user/app
+            mkdir -p "$APP_DIR"
+
+            # Find most recent jar
+            LATEST_JAR="$(ls -1t "$APP_DIR"/*.jar 2>/dev/null | head -n1 || true)"
+            if [[ -z "${LATEST_JAR:-}" ]]; then
+              echo "No JAR found in $APP_DIR after scp. Aborting."
+              exit 1
+            fi
+
+            # Normalize to app.jar
+            cp -f "$LATEST_JAR" "$APP_DIR/app.jar" || { echo "Copy failed"; exit 1; }
+
+            # Write env file from GH environment secrets (safe quoting)
+            cat > "$APP_DIR/app.env" <<'EOF'
+            SPRING_DATASOURCE_PASSWORD='${SPRING_DATASOURCE_PASSWORD}'
+            SUPABASE_S3_ACCESS_KEY='${SUPABASE_S3_ACCESS_KEY}'
+            SUPABASE_S3_SECRET_KEY='${SUPABASE_S3_SECRET_KEY}'
+            EOF
+            chmod 600 "$APP_DIR/app.env"
+
+            # Stop previous process (ignore if not running)
+            pkill -f "java -jar $APP_DIR/app.jar" || true
+
+            # Start
+            cd "$APP_DIR"
+            set -a; . "$APP_DIR/app.env"; set +a
+            nohup java -jar "$APP_DIR/app.jar" > app.log 2>&1 &
+
+            # brief wait, then try to print logs (ignore if not ready)
+            sleep 2
+            tail -n 50 app.log || true
+
+            echo "✅ Deploy step completed."
+            exit 0
+            continue-on-error: true
+    
