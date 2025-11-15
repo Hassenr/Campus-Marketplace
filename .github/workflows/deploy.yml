@@ -58,46 +58,42 @@ jobs:
           envs: SPRING_DATASOURCE_PASSWORD,SUPABASE_S3_ACCESS_KEY,SUPABASE_S3_SECRET_KEY,JWT_SECRET
           script: |
             set -e
-            
+      
             APP_DIR=/home/ec2-user/app
             mkdir -p "$APP_DIR"
-            
-            # Find the most recent JAR (handles nested directory structure from SCP)
+      
+            # Find the most recent JAR
             LATEST_JAR=$(find "$APP_DIR" -name "*.jar" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-            
+      
             if [ -z "$LATEST_JAR" ]; then
               echo "❌ No JAR found in $APP_DIR"
               exit 1
             fi
-            
+      
             echo "📦 Found JAR: $LATEST_JAR"
             cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
-            
-            # Create environment file
-            cat > "$APP_DIR/.env" <<EOF
-            SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-            SUPABASE_S3_ACCESS_KEY=${SUPABASE_S3_ACCESS_KEY}
-            SUPABASE_S3_SECRET_KEY=${SUPABASE_S3_SECRET_KEY}
-            jwt_secret=${JWT_SECRET}
-            EOF
-            chmod 600 "$APP_DIR/.env"
-            
+      
             # Stop existing Java process if running
             if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
               echo "🛑 Stopping existing application..."
               pkill -f "java -jar $APP_DIR/app.jar"
               sleep 3
             fi
-            
-            # Start the application
+      
+            # Start the application with environment variables passed directly
             echo "🚀 Starting Spring Boot application..."
             cd "$APP_DIR"
-            export $(cat .env | xargs)
-            nohup java -jar app.jar > app.log 2>&1 &
             
+            nohup java -jar app.jar \
+              -Dspring.datasource.password="${SPRING_DATASOURCE_PASSWORD}" \
+              -Dsupabase.s3.access-key="${SUPABASE_S3_ACCESS_KEY}" \
+              -Dsupabase.s3.secret-key="${SUPABASE_S3_SECRET_KEY}" \
+              -Djwt.secret="${JWT_SECRET}" \
+              > app.log 2>&1 &
+      
             # Wait for application to start
             sleep 5
-            
+      
             # Verify the application started successfully
             if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
               echo "✅ Application started successfully"
