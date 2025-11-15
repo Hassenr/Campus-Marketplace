@@ -6,6 +6,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class UserService {
@@ -51,15 +52,10 @@ public class UserService {
 
 
     public User getUserByUsername(String username) {
-        //this will return null if user not found
-        User user = userRepository.findByUsername(username);
-
-        if (user==null) {
-            throw new RuntimeException("User not found with username: " + username);
-        } else {
-            return user;
-        }
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
     }
+
 
     public User updateUser(Long userId, User updatedUser) {
         User existingUser = userRepository.findById(userId)
@@ -85,13 +81,6 @@ public class UserService {
         userRepository.deleteById(userId);
     }
 
-    public boolean verifyCredentials(String username, String rawPassword) {
-        User user = userRepository.findByUsername(username);
-        if (user == null) {
-            return false;
-        }
-        return passwordEncoder.matches(rawPassword, user.getPassword());
-    }
 
 
 }
