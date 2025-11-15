@@ -59,19 +59,12 @@ jobs:
           envs: SPRING_DATASOURCE_PASSWORD,SUPABASE_S3_ACCESS_KEY,SUPABASE_S3_SECRET_KEY,JWT_SECRET
           script: |
             set -e
-            
-            # Export environment variables (appleboy/ssh-action quirk)
-            export SPRING_DATASOURCE_PASSWORD="$SPRING_DATASOURCE_PASSWORD"
-            export SUPABASE_S3_ACCESS_KEY="$SUPABASE_S3_ACCESS_KEY"
-            export SUPABASE_S3_SECRET_KEY="$SUPABASE_S3_SECRET_KEY"
-            export JWT_SECRET="$JWT_SECRET"
       
             APP_DIR=/home/ec2-user/app
             mkdir -p "$APP_DIR"
       
-            # Find the most recent JAR
+            # Find and copy JAR
             LATEST_JAR=$(find "$APP_DIR" -name "*.jar" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-      
             if [ -z "$LATEST_JAR" ]; then
               echo "❌ No JAR found in $APP_DIR"
               exit 1
@@ -80,43 +73,57 @@ jobs:
             echo "📦 Found JAR: $LATEST_JAR"
             cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
       
-            # Create .env file with proper values
-            cat > "$APP_DIR/.env" <<EOF
+            # Create startup script with environment variables
+            cat > "$APP_DIR/start.sh" <<'STARTSCRIPT'
+            #!/bin/bash
+            cd /home/ec2-user/app
+      
+            # Read environment variables from .env file
+            while IFS='=' read -r key value; do
+              if [[ ! $key =~ ^# && -n $key ]]; then
+                export "$key=$value"
+              fi
+            done < .env
+      
+            # Start Spring Boot application
+            exec java -jar app.jar
+            STARTSCRIPT
+      
+            chmod +x "$APP_DIR/start.sh"
+      
+            # Create .env file (values must be on same line, no quotes)
+            cat > "$APP_DIR/.env" <<ENVEOF
             SPRING_DATASOURCE_PASSWORD=$SPRING_DATASOURCE_PASSWORD
             SUPABASE_S3_ACCESS_KEY=$SUPABASE_S3_ACCESS_KEY
             SUPABASE_S3_SECRET_KEY=$SUPABASE_S3_SECRET_KEY
             jwt_secret=$JWT_SECRET
-            EOF
+            ENVEOF
+      
             chmod 600 "$APP_DIR/.env"
       
-            # Stop existing Java process if running
+            # Stop existing process
             if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
               echo "🛑 Stopping existing application..."
               pkill -f "java -jar $APP_DIR/app.jar"
               sleep 3
             fi
       
-            # Start the application
+            # Start application
             echo "🚀 Starting Spring Boot application..."
-            cd "$APP_DIR"
-            
-            # Source environment variables and start app
-            export $(grep -v '^#' .env | xargs)
-            nohup java -jar app.jar > app.log 2>&1 &
+            nohup "$APP_DIR/start.sh" > "$APP_DIR/app.log" 2>&1 &
       
-            # Wait for application to start
-            sleep 5
+            # Wait for startup
+            sleep 8
       
-            # Verify the application started successfully
-            if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+            # Verify
+            if pgrep -f "java -jar" > /dev/null; then
               echo "✅ Application started successfully"
-              echo "📋 Last 30 lines of log:"
-              tail -n 30 app.log
-              exit 0
+              echo "📋 Last 50 lines of log:"
+              tail -n 50 "$APP_DIR/app.log"
             else
               echo "❌ Application failed to start"
               echo "📋 Full log output:"
-              cat app.log
+              cat "$APP_DIR/app.log"
               exit 1
             fi
 
