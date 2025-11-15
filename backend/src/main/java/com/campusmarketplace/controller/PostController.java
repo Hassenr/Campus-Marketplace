@@ -1,8 +1,11 @@
 package com.campusmarketplace.controller;
 
 import com.campusmarketplace.Entity.Post;
+import com.campusmarketplace.dto.PostRequest;
 import com.campusmarketplace.service.PostService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,6 +26,14 @@ public class PostController {
         return postService.getAllPosts();
     }
 
+    @GetMapping("/mine")
+    public List<Post> getAllMyPosts() {
+        String username = SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getName();
+        return postService.getPostsByUser(username);
+    }
+
     @GetMapping("/{postId}")
     public ResponseEntity<Post> getPostById(@PathVariable Long postId) {
         try {
@@ -35,13 +46,17 @@ public class PostController {
 
     @PostMapping(consumes = "multipart/form-data")
     public ResponseEntity<Post> addPost(
-            @RequestParam("title") String title,
-            @RequestParam("description") String description,
-            @RequestParam("askingPrice") Double askingPrice,
-            @RequestParam("category") String category,
-            @RequestParam(value = "image", required = false) MultipartFile image) {
+            @RequestPart("post") String postJson,
+            @RequestPart(value = "image", required = false) MultipartFile image) {
         try {
-            Post saved = postService.addPost(title, description, askingPrice, category, image);
+            String username = SecurityContextHolder.getContext()
+                    .getAuthentication()
+                    .getName();
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            PostRequest postRequest = objectMapper.readValue(postJson, PostRequest.class);
+
+            Post saved = postService.addPost(username, postRequest, image);
             return ResponseEntity.ok(saved);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -51,13 +66,17 @@ public class PostController {
     @PutMapping(value = "/{postId}", consumes = "multipart/form-data")
     public ResponseEntity<Post> updatePost(
             @PathVariable Long postId,
-            @RequestParam("title") String title,
-            @RequestParam("description") String description,
-            @RequestParam("askingPrice") Double askingPrice,
-            @RequestParam("category") String category,
-            @RequestParam(value = "image", required = false) MultipartFile image) {
+            @RequestPart("post") String postJson,
+            @RequestPart(value = "image", required = false) MultipartFile image) {
         try {
-            Post saved = postService.updatePost(postId, title, description, askingPrice, category, image);
+            String username = SecurityContextHolder.getContext()
+                    .getAuthentication()
+                    .getName();
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            PostRequest postRequest = objectMapper.readValue(postJson, PostRequest.class);
+
+            Post saved = postService.updatePost(postId,username, postRequest, image);
             return ResponseEntity.ok(saved);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -67,10 +86,14 @@ public class PostController {
     @DeleteMapping("/{postId}")
     public ResponseEntity<Void> deletePost(@PathVariable Long postId) {
         try {
-            postService.deletePost(postId);
+            String username = SecurityContextHolder.getContext()
+                    .getAuthentication()
+                    .getName();
+            postService.deletePost(postId, username);
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
     }
+
 }
