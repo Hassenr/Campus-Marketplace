@@ -34,13 +34,14 @@ jobs:
             mkdir -p /home/ec2-user/app
             chmod 755 /home/ec2-user/app
 
+  
       - name: Copy JAR to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          source: "target/*.jar"
+          source: "backend/target/*.jar"
           target: "/home/ec2-user/app/"
           overwrite: true
 
@@ -60,25 +61,26 @@ jobs:
             set -e
             
             APP_DIR=/home/ec2-user/app
+            cd "$APP_DIR"
             
-            # Find JAR in the uploaded backend/target directory
-            LATEST_JAR=$(find "$APP_DIR/backend/target" -name "*.jar" -type f 2>/dev/null | head -1)
+            # Find the uploaded JAR
+            LATEST_JAR=$(find backend/target -name "*.jar" -type f 2>/dev/null | head -1)
             if [ -z "$LATEST_JAR" ]; then
-              echo "❌ No JAR found"
+              echo "❌ No JAR found in backend/target"
               exit 1
             fi
       
             echo "📦 Found JAR: $LATEST_JAR"
-            cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
-
+            cp -f "$LATEST_JAR" "app.jar"
+      
             # Stop existing application
-            if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+            if pgrep -f "java -jar.*app.jar" > /dev/null; then
               echo "🛑 Stopping existing application..."
-              pkill -f "java -jar $APP_DIR/app.jar"
+              pkill -f "java -jar.*app.jar"
               sleep 5
             fi
-
-            # Start application with environment variables passed directly
+      
+            # Start application
             echo "🚀 Starting Spring Boot application..."
             nohup java -jar app.jar \
               --spring.datasource.password="${SPRING_DATASOURCE_PASSWORD}" \
@@ -87,11 +89,11 @@ jobs:
               --jwt.secret="${JWT_SECRET}" \
               --server.port=8080 \
               > app.log 2>&1 &
-
-            # Wait for application to start
+      
+            # Wait for startup
             echo "⏳ Waiting for application to start..."
             for i in {1..30}; do
-              if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+              if pgrep -f "java -jar.*app.jar" > /dev/null; then
                 sleep 2
                 if curl -f http://localhost:8080/actuator/health 2>/dev/null; then
                   echo "✅ Application started successfully"
@@ -102,8 +104,9 @@ jobs:
               fi
               sleep 2
             done
-
-            echo "❌ Application failed to start within 60 seconds"
-            echo "📋 Full application logs:"
+      
+            echo "❌ Application failed to start"
+            echo "📋 Full logs:"
             cat app.log
             exit 1
+
