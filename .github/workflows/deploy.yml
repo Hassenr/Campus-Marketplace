@@ -2,7 +2,7 @@ name: Deploy Spring Boot Backend to EC2
 
 on:
   push:
-    branches: [ main]
+    branches: [ main ]
 
 jobs:
   deploy:
@@ -13,24 +13,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Build backend JAR
-        working-directory: backend
+      - name: Build JAR
         run: mvn clean package -DskipTests
 
-      # NEW: ensure the target dir exists (avoids scp failing with "process exited 1")
-      - name: Prepare EC2
+      - name: Prepare EC2 directory
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          script_stop: false
           script: |
             mkdir -p /home/ec2-user/app
             chmod 755 /home/ec2-user/app
@@ -41,17 +38,17 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          source: "backend/target/*.jar"
+          source: "target/*.jar"
           target: "/home/ec2-user/app/"
           overwrite: true
-          
-      - name: Restart Spring Boot App
+
+      - name: Deploy and Restart Application
         uses: appleboy/ssh-action@v0.1.10
         env:
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
-          SUPABASE_S3_ACCESS_KEY:     ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
-          SUPABASE_S3_SECRET_KEY:     ${{ secrets.SUPABASE_S3_SECRET_KEY }}
-          JWT_SECRET:                 ${{ secrets.JWT_SECRET }}
+          SUPABASE_S3_ACCESS_KEY: ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
+          SUPABASE_S3_SECRET_KEY: ${{ secrets.SUPABASE_S3_SECRET_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -59,71 +56,54 @@ jobs:
           envs: SPRING_DATASOURCE_PASSWORD,SUPABASE_S3_ACCESS_KEY,SUPABASE_S3_SECRET_KEY,JWT_SECRET
           script: |
             set -e
-      
+
             APP_DIR=/home/ec2-user/app
-            mkdir -p "$APP_DIR"
-      
-            # Find and copy JAR
-            LATEST_JAR=$(find "$APP_DIR" -name "*.jar" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+            cd "$APP_DIR"
+
+            # Find the uploaded JAR
+            LATEST_JAR=$(find "$APP_DIR/target" -name "*.jar" -type f 2>/dev/null | head -1)
+
             if [ -z "$LATEST_JAR" ]; then
-              echo "❌ No JAR found in $APP_DIR"
-              exit 1
-            fi
-      
-            echo "📦 Found JAR: $LATEST_JAR"
-            cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
-      
-            # Create startup script with environment variables
-            cat > "$APP_DIR/start.sh" <<'STARTSCRIPT'
-            #!/bin/bash
-            cd /home/ec2-user/app
-      
-            # Read environment variables from .env file
-            while IFS='=' read -r key value; do
-              if [[ ! $key =~ ^# && -n $key ]]; then
-                export "$key=$value"
-              fi
-            done < .env
-      
-            # Start Spring Boot application
-            exec java -jar app.jar
-            STARTSCRIPT
-      
-            chmod +x "$APP_DIR/start.sh"
-      
-            # Create .env file (values must be on same line, no quotes)
-            cat > "$APP_DIR/.env" <<ENVEOF
-            SPRING_DATASOURCE_PASSWORD=$SPRING_DATASOURCE_PASSWORD
-            SUPABASE_S3_ACCESS_KEY=$SUPABASE_S3_ACCESS_KEY
-            SUPABASE_S3_SECRET_KEY=$SUPABASE_S3_SECRET_KEY
-            jwt_secret=$JWT_SECRET
-            ENVEOF
-      
-            chmod 600 "$APP_DIR/.env"
-      
-            # Stop existing process
-            if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
-              echo "🛑 Stopping existing application..."
-              pkill -f "java -jar $APP_DIR/app.jar"
-              sleep 3
-            fi
-      
-            # Start application
-            echo "🚀 Starting Spring Boot application..."
-            nohup "$APP_DIR/start.sh" > "$APP_DIR/app.log" 2>&1 &
-      
-            # Wait for startup
-            sleep 8
-      
-            # Verify
-            if pgrep -f "java -jar" > /dev/null; then
-              echo "✅ Application started successfully"
-              echo "📋 Last 50 lines of log:"
-              tail -n 50 "$APP_DIR/app.log"
-            else
-              echo "❌ Application failed to start"
-              echo "📋 Full log output:"
-              cat "$APP_DIR/app.log"
+              echo "❌ No JAR found in $APP_DIR/target"
               exit 1
             fi
 
+            echo "📦 Found JAR: $LATEST_JAR"
+            cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
+
+            # Stop existing application
+            if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+              echo "🛑 Stopping existing application..."
+              pkill -f "java -jar $APP_DIR/app.jar"
+              sleep 5
+            fi
+
+            # Start application with environment variables passed directly
+            echo "🚀 Starting Spring Boot application..."
+            nohup java -jar app.jar \
+              --spring.datasource.password="${SPRING_DATASOURCE_PASSWORD}" \
+              --supabase.s3.access-key="${SUPABASE_S3_ACCESS_KEY}" \
+              --supabase.s3.secret-key="${SUPABASE_S3_SECRET_KEY}" \
+              --jwt.secret="${JWT_SECRET}" \
+              --server.port=8080 \
+              > app.log 2>&1 &
+
+            # Wait for application to start
+            echo "⏳ Waiting for application to start..."
+            for i in {1..30}; do
+              if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+                sleep 2
+                if curl -f http://localhost:8080/actuator/health 2>/dev/null; then
+                  echo "✅ Application started successfully"
+                  echo "📋 Recent logs:"
+                  tail -n 30 app.log
+                  exit 0
+                fi
+              fi
+              sleep 2
+            done
+
+            echo "❌ Application failed to start within 60 seconds"
+            echo "📋 Full application logs:"
+            cat app.log
+            exit 1
