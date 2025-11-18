@@ -2,7 +2,7 @@ name: Deploy Spring Boot Backend to EC2
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, jwt ]
 
 jobs:
   deploy:
@@ -44,56 +44,86 @@ jobs:
           source: "backend/target/*.jar"
           target: "/home/ec2-user/app/"
           overwrite: true
-
+          
       - name: Restart Spring Boot App
         uses: appleboy/ssh-action@v0.1.10
         env:
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
           SUPABASE_S3_ACCESS_KEY:     ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
           SUPABASE_S3_SECRET_KEY:     ${{ secrets.SUPABASE_S3_SECRET_KEY }}
+          JWT_SECRET:                 ${{ secrets.JWT_SECRET }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          script_stop: false   # don't fail the step on the first non-zero command
+          envs: SPRING_DATASOURCE_PASSWORD,SUPABASE_S3_ACCESS_KEY,SUPABASE_S3_SECRET_KEY,JWT_SECRET
           script: |
-            #!/usr/bin/env bash
-            set -u # (no -e / no pipefail to avoid false negatives)
-
+            set -e
+      
             APP_DIR=/home/ec2-user/app
             mkdir -p "$APP_DIR"
-
-            # Find most recent jar
-            LATEST_JAR="$(ls -1t "$APP_DIR"/*.jar 2>/dev/null | head -n1 || true)"
-            if [[ -z "${LATEST_JAR:-}" ]]; then
-              echo "No JAR found in $APP_DIR after scp. Aborting."
+      
+            # Find and copy JAR
+            LATEST_JAR=$(find "$APP_DIR" -name "*.jar" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+            if [ -z "$LATEST_JAR" ]; then
+              echo "❌ No JAR found in $APP_DIR"
+              exit 1
+            fi
+      
+            echo "📦 Found JAR: $LATEST_JAR"
+            cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
+      
+            # Create startup script with environment variables
+            cat > "$APP_DIR/start.sh" <<'STARTSCRIPT'
+            #!/bin/bash
+            cd /home/ec2-user/app
+      
+            # Read environment variables from .env file
+            while IFS='=' read -r key value; do
+              if [[ ! $key =~ ^# && -n $key ]]; then
+                export "$key=$value"
+              fi
+            done < .env
+      
+            # Start Spring Boot application
+            exec java -jar app.jar
+            STARTSCRIPT
+      
+            chmod +x "$APP_DIR/start.sh"
+      
+            # Create .env file (values must be on same line, no quotes)
+            cat > "$APP_DIR/.env" <<ENVEOF
+            SPRING_DATASOURCE_PASSWORD=$SPRING_DATASOURCE_PASSWORD
+            SUPABASE_S3_ACCESS_KEY=$SUPABASE_S3_ACCESS_KEY
+            SUPABASE_S3_SECRET_KEY=$SUPABASE_S3_SECRET_KEY
+            jwt_secret=$JWT_SECRET
+            ENVEOF
+      
+            chmod 600 "$APP_DIR/.env"
+      
+            # Stop existing process
+            if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+              echo "🛑 Stopping existing application..."
+              pkill -f "java -jar $APP_DIR/app.jar"
+              sleep 3
+            fi
+      
+            # Start application
+            echo "🚀 Starting Spring Boot application..."
+            nohup "$APP_DIR/start.sh" > "$APP_DIR/app.log" 2>&1 &
+      
+            # Wait for startup
+            sleep 8
+      
+            # Verify
+            if pgrep -f "java -jar" > /dev/null; then
+              echo "✅ Application started successfully"
+              echo "📋 Last 50 lines of log:"
+              tail -n 50 "$APP_DIR/app.log"
+            else
+              echo "❌ Application failed to start"
+              echo "📋 Full log output:"
+              cat "$APP_DIR/app.log"
               exit 1
             fi
 
-            # Normalize to app.jar
-            cp -f "$LATEST_JAR" "$APP_DIR/app.jar" || { echo "Copy failed"; exit 1; }
-
-            # Write env file from GH environment secrets (safe quoting)
-            cat > "$APP_DIR/app.env" <<'EOF'
-            SPRING_DATASOURCE_PASSWORD='${SPRING_DATASOURCE_PASSWORD}'
-            SUPABASE_S3_ACCESS_KEY='${SUPABASE_S3_ACCESS_KEY}'
-            SUPABASE_S3_SECRET_KEY='${SUPABASE_S3_SECRET_KEY}'
-            EOF
-            chmod 600 "$APP_DIR/app.env"
-
-            # Stop previous process (ignore if not running)
-            pkill -f "java -jar $APP_DIR/app.jar" || true
-
-            # Start
-            cd "$APP_DIR"
-            set -a; . "$APP_DIR/app.env"; set +a
-            nohup java -jar "$APP_DIR/app.jar" > app.log 2>&1 &
-
-            # brief wait, then try to print logs (ignore if not ready)
-            sleep 2
-            tail -n 50 app.log || true
-
-            echo "✅ Deploy step completed."
-            exit 0
-            continue-on-error: true
-    
