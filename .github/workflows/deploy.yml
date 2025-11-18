@@ -19,10 +19,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # Build INSIDE backend/ so the JAR lands in backend/target/
       - name: Build JAR
-        run: |
-          cd backend
-          mvn clean package -DskipTests
+        working-directory: backend
+        run: mvn clean package -DskipTests
 
       - name: Prepare EC2 directory
         uses: appleboy/ssh-action@v0.1.10
@@ -34,6 +34,7 @@ jobs:
             mkdir -p /home/ec2-user/app
             chmod 755 /home/ec2-user/app
 
+      # Copy the built JAR from backend/target to /home/ec2-user/app/
       - name: Copy JAR to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -44,7 +45,7 @@ jobs:
           target: "/home/ec2-user/app/"
           overwrite: true
 
-      - name: Restart Spring Boot App
+      - name: Deploy and Restart Application
         uses: appleboy/ssh-action@v0.1.10
         env:
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
@@ -57,51 +58,58 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           envs: SPRING_DATASOURCE_PASSWORD,SUPABASE_S3_ACCESS_KEY,SUPABASE_S3_SECRET_KEY,JWT_SECRET
           script: |
-            set -e
-      
+            set -u
+
             APP_DIR=/home/ec2-user/app
-      
-            # Find the uploaded JAR
-            LATEST_JAR=$(find "$APP_DIR" -name "*.jar" -type f 2>/dev/null | head -1)
-            if [ -z "$LATEST_JAR" ]; then
-              echo "❌ No JAR found"
+            cd "$APP_DIR"
+
+            # Find the JAR we just scp'ed (it's in APP_DIR, not APP_DIR/target)
+            LATEST_JAR="$(ls -1t "$APP_DIR"/*.jar 2>/dev/null | head -n1 || true)"
+            if [ -z "${LATEST_JAR:-}" ]; then
+              echo "❌ No JAR found in $APP_DIR after scp"
               exit 1
             fi
-      
+
             echo "📦 Found JAR: $LATEST_JAR"
-      
-            # Stop existing application
-            if pgrep -f "java -jar" > /dev/null; then
+            cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
+
+            # Stop existing application if running
+            if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
               echo "🛑 Stopping existing application..."
-              pkill -f "java -jar"
+              pkill -f "java -jar $APP_DIR/app.jar" || true
               sleep 5
             fi
-      
-            # Start application
-            cd "$APP_DIR"
+
+            # Start application with env vars (Spring Boot reads them as properties)
             echo "🚀 Starting Spring Boot application..."
-            nohup java -jar "$LATEST_JAR" \
+            nohup java -jar app.jar \
               --spring.datasource.password="${SPRING_DATASOURCE_PASSWORD}" \
               --supabase.s3.access-key="${SUPABASE_S3_ACCESS_KEY}" \
               --supabase.s3.secret-key="${SUPABASE_S3_SECRET_KEY}" \
               --jwt.secret="${JWT_SECRET}" \
               --server.port=8080 \
               > app.log 2>&1 &
-      
-            # Wait for process to start and port to open
-            echo "⏳ Waiting for application to start..."
-            sleep 10
-            
-            if pgrep -f "java -jar" > /dev/null; then
-              if ss -tuln | grep -q ":8080 "; then
-                echo "✅ Application started successfully on port 8080"
-                echo "📋 Recent logs:"
-                tail -n 50 app.log
-                exit 0
-              fi
-            fi
-      
-            echo "⚠️ Application may still be starting. Check logs:"
-            tail -n 100 app.log
-            exit 0
 
+            echo "⏳ Waiting for application to come up..."
+            for i in {1..30}; do
+              if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+                # Health check: if you have actuator
+                if curl -fsS http://127.0.0.1:8080/actuator/health >/dev/null 2>&1; then
+                  echo "✅ Application started successfully"
+                  tail -n 50 app.log || true
+                  exit 0
+                fi
+                # Fallback: check the port is listening
+                if ss -ltn '( sport = :8080 )' | grep -q 8080; then
+                  echo "✅ Application listening on 8080"
+                  tail -n 50 app.log || true
+                  exit 0
+                fi
+              fi
+              sleep 2
+            done
+
+            echo "❌ Application failed to start within 60 seconds"
+            echo "📋 Recent logs:"
+            tail -n 200 app.log || true
+            exit 1
