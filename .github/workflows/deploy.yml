@@ -20,7 +20,9 @@ jobs:
           distribution: 'temurin'
 
       - name: Build JAR
-        run: mvn clean package -DskipTests
+        run: |
+          cd backend
+          mvn clean package -DskipTests
 
       - name: Prepare EC2 directory
         uses: appleboy/ssh-action@v0.1.10
@@ -42,13 +44,13 @@ jobs:
           target: "/home/ec2-user/app/"
           overwrite: true
 
-      - name: Deploy and Restart Application
+      - name: Restart Spring Boot App
         uses: appleboy/ssh-action@v0.1.10
         env:
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
-          SUPABASE_S3_ACCESS_KEY: ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
-          SUPABASE_S3_SECRET_KEY: ${{ secrets.SUPABASE_S3_SECRET_KEY }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SUPABASE_S3_ACCESS_KEY:     ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
+          SUPABASE_S3_SECRET_KEY:     ${{ secrets.SUPABASE_S3_SECRET_KEY }}
+          JWT_SECRET:                 ${{ secrets.JWT_SECRET }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -56,18 +58,16 @@ jobs:
           envs: SPRING_DATASOURCE_PASSWORD,SUPABASE_S3_ACCESS_KEY,SUPABASE_S3_SECRET_KEY,JWT_SECRET
           script: |
             set -e
-
+            
             APP_DIR=/home/ec2-user/app
-            cd "$APP_DIR"
-
-            # Find the uploaded JAR
-            LATEST_JAR=$(find "$APP_DIR/target" -name "*.jar" -type f 2>/dev/null | head -1)
-
+            
+            # Find JAR in the uploaded backend/target directory
+            LATEST_JAR=$(find "$APP_DIR/backend/target" -name "*.jar" -type f 2>/dev/null | head -1)
             if [ -z "$LATEST_JAR" ]; then
-              echo "❌ No JAR found in $APP_DIR/target"
+              echo "❌ No JAR found"
               exit 1
             fi
-
+      
             echo "📦 Found JAR: $LATEST_JAR"
             cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
 
