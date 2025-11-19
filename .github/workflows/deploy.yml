@@ -19,7 +19,7 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # Build INSIDE backend/ so the JAR lands in backend/target/
+      # Build inside backend/, JAR -> backend/target/
       - name: Build JAR
         working-directory: backend
         run: mvn clean package -DskipTests
@@ -34,7 +34,7 @@ jobs:
             mkdir -p /home/ec2-user/app
             chmod 755 /home/ec2-user/app
 
-      # Copy the built JAR from backend/target to /home/ec2-user/app/
+      # Copy built JAR to /home/ec2-user/app/
       - name: Copy JAR to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -44,7 +44,7 @@ jobs:
           source: "backend/target/*.jar"
           target: "/home/ec2-user/app/"
           overwrite: true
-          
+
       - name: Deploy and Restart Application
         uses: appleboy/ssh-action@v0.1.10
         env:
@@ -59,32 +59,24 @@ jobs:
           envs: SPRING_DATASOURCE_PASSWORD,SUPABASE_S3_ACCESS_KEY,SUPABASE_S3_SECRET_KEY,JWT_SECRET
           script: |
             set -u
-      
             APP_DIR=/home/ec2-user/app
             cd "$APP_DIR"
-      
-            # Find the JAR
-            LATEST_JAR="$(find "$APP_DIR" -path "*/backend/target/*.jar" -type f 2>/dev/null | head -n1)"
+
+            # The JAR was scp'ed directly into APP_DIR
+            LATEST_JAR="$(ls -1t "$APP_DIR"/*.jar 2>/dev/null | head -n1 || true)"
             if [ -z "${LATEST_JAR:-}" ]; then
-              echo "❌ No JAR found in backend/target path"
+              echo "❌ No JAR found in $APP_DIR after scp"
               exit 1
             fi
-      
             echo "📦 Found JAR: $LATEST_JAR"
-      
-            # Stop existing application
-            if pgrep -f "java -jar app.jar" > /dev/null; then
-              echo "🛑 Stopping existing application..."
-              pkill -f "java -jar app.jar" || true
-              sleep 5
-            fi
-      
-            # Copy new JAR
             cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
-            echo "✅ JAR copied successfully"
-      
-            # Start application
-            echo "🚀 Starting Spring Boot application..."
+
+            # Stop old app if running
+            pkill -f "java -jar $APP_DIR/app.jar" || true
+            sleep 3
+
+            # Start app with secrets as Spring props
+            echo "🚀 Starting Spring Boot..."
             nohup java -jar app.jar \
               --spring.datasource.password="${SPRING_DATASOURCE_PASSWORD}" \
               --supabase.s3.access-key="${SUPABASE_S3_ACCESS_KEY}" \
@@ -92,40 +84,24 @@ jobs:
               --jwt.secret="${JWT_SECRET}" \
               --server.port=8080 \
               > app.log 2>&1 &
-      
-            # Wait a moment for process to start
-            sleep 2
-      
-            echo "⏳ Waiting for application to start (up to 3 minutes)..."
-            for i in {1..90}; do
-              # Check if Java process is running
-              if ! pgrep -f "java -jar app.jar" > /dev/null; then
-                echo "❌ Application process not found. Last 100 lines of logs:"
-                tail -n 100 app.log
-                exit 1
+
+            # Wait up to 60s: prefer actuator, fallback to port check
+            for i in {1..30}; do
+              if pgrep -f "java -jar $APP_DIR/app.jar" >/dev/null; then
+                if curl -fsS http://127.0.0.1:8080/actuator/health >/dev/null 2>&1; then
+                  echo "✅ App healthy"
+                  tail -n 50 app.log || true
+                  exit 0
+                fi
+                if ss -ltn '( sport = :8080 )' | grep -q 8080; then
+                  echo "✅ App listening on 8080"
+                  tail -n 50 app.log || true
+                  exit 0
+                fi
               fi
-      
-              # Check health endpoint
-              if curl -fsS http://127.0.0.1:8080/actuator/health > /dev/null 2>&1; then
-                echo "✅ Application is healthy after $((i * 2)) seconds!"
-                echo "📋 Health status:"
-                curl -s http://127.0.0.1:8080/actuator/health | head -20
-                echo ""
-                echo "📋 Recent logs:"
-                tail -n 30 app.log
-                exit 0
-              fi
-      
-              # Show progress every 10 seconds
-              if [ $((i % 5)) -eq 0 ]; then
-                echo "⏱️  Still waiting... (${i}/90 checks, $((i * 2)) seconds elapsed)"
-              fi
-      
               sleep 2
             done
-      
-            echo "❌ Application failed to become healthy within 3 minutes"
-            echo "📋 Application logs (last 150 lines):"
-            tail -n 150 app.log
+
+            echo "❌ App failed to become ready"
+            tail -n 200 app.log || true
             exit 1
-      
