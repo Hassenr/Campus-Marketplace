@@ -73,9 +73,9 @@ jobs:
             echo "📦 Found JAR: $LATEST_JAR"
       
             # Stop existing application
-            if pgrep -f "java -jar" > /dev/null; then
+            if pgrep -f "java -jar app.jar" > /dev/null; then
               echo "🛑 Stopping existing application..."
-              pkill -f "java -jar" || true
+              pkill -f "java -jar app.jar" || true
               sleep 5
             fi
       
@@ -93,14 +93,14 @@ jobs:
               --server.port=8080 \
               > app.log 2>&1 &
       
-            APP_PID=$!
-            echo "📝 Application started with PID: $APP_PID"
+            # Wait a moment for process to start
+            sleep 2
       
             echo "⏳ Waiting for application to start (up to 3 minutes)..."
             for i in {1..90}; do
-              # Check if process is still running
-              if ! ps -p $APP_PID > /dev/null 2>&1; then
-                echo "❌ Application process died. Last 100 lines of logs:"
+              # Check if Java process is running
+              if ! pgrep -f "java -jar app.jar" > /dev/null; then
+                echo "❌ Application process not found. Last 100 lines of logs:"
                 tail -n 100 app.log
                 exit 1
               fi
@@ -128,3 +128,4 @@ jobs:
             echo "📋 Application logs (last 150 lines):"
             tail -n 150 app.log
             exit 1
+      
