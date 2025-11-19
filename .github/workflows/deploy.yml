@@ -63,7 +63,7 @@ jobs:
             APP_DIR=/home/ec2-user/app
             cd "$APP_DIR"
       
-            # Find the JAR that was just uploaded (has backend/target path)
+            # Find the JAR
             LATEST_JAR="$(find "$APP_DIR" -path "*/backend/target/*.jar" -type f 2>/dev/null | head -n1)"
             if [ -z "${LATEST_JAR:-}" ]; then
               echo "❌ No JAR found in backend/target path"
@@ -72,14 +72,14 @@ jobs:
       
             echo "📦 Found JAR: $LATEST_JAR"
       
-            # Stop existing application before replacing JAR
+            # Stop existing application
             if pgrep -f "java -jar" > /dev/null; then
               echo "🛑 Stopping existing application..."
               pkill -f "java -jar" || true
               sleep 5
             fi
       
-            # Now copy the new JAR
+            # Copy new JAR
             cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
             echo "✅ JAR copied successfully"
       
@@ -93,22 +93,38 @@ jobs:
               --server.port=8080 \
               > app.log 2>&1 &
       
-            echo "⏳ Waiting for application to start..."
-            for i in {1..60}; do
+            APP_PID=$!
+            echo "📝 Application started with PID: $APP_PID"
+      
+            echo "⏳ Waiting for application to start (up to 3 minutes)..."
+            for i in {1..90}; do
+              # Check if process is still running
+              if ! ps -p $APP_PID > /dev/null 2>&1; then
+                echo "❌ Application process died. Last 100 lines of logs:"
+                tail -n 100 app.log
+                exit 1
+              fi
+      
+              # Check health endpoint
               if curl -fsS http://127.0.0.1:8080/actuator/health > /dev/null 2>&1; then
-                echo "✅ Application is healthy!"
+                echo "✅ Application is healthy after $((i * 2)) seconds!"
                 echo "📋 Health status:"
-                curl -s http://127.0.0.1:8080/actuator/health
+                curl -s http://127.0.0.1:8080/actuator/health | head -20
                 echo ""
                 echo "📋 Recent logs:"
                 tail -n 30 app.log
                 exit 0
               fi
+      
+              # Show progress every 10 seconds
+              if [ $((i % 5)) -eq 0 ]; then
+                echo "⏱️  Still waiting... (${i}/90 checks, $((i * 2)) seconds elapsed)"
+              fi
+      
               sleep 2
             done
       
-            echo "❌ Application failed to become healthy within 120 seconds"
-            echo "📋 Recent logs:"
-            tail -n 100 app.log
+            echo "❌ Application failed to become healthy within 3 minutes"
+            echo "📋 Application logs (last 150 lines):"
+            tail -n 150 app.log
             exit 1
-
