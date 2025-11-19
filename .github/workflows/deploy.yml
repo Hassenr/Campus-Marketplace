@@ -44,7 +44,7 @@ jobs:
           source: "backend/target/*.jar"
           target: "/home/ec2-user/app/"
           overwrite: true
-      
+          
       - name: Deploy and Restart Application
         uses: appleboy/ssh-action@v0.1.10
         env:
@@ -63,21 +63,27 @@ jobs:
             APP_DIR=/home/ec2-user/app
             cd "$APP_DIR"
       
-            LATEST_JAR="$(ls -1t "$APP_DIR"/*.jar 2>/dev/null | head -n1 || true)"
+            # Find the JAR that was just uploaded (has backend/target path)
+            LATEST_JAR="$(find "$APP_DIR" -path "*/backend/target/*.jar" -type f 2>/dev/null | head -n1)"
             if [ -z "${LATEST_JAR:-}" ]; then
-              echo "❌ No JAR found"
+              echo "❌ No JAR found in backend/target path"
               exit 1
             fi
       
             echo "📦 Found JAR: $LATEST_JAR"
-            cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
       
-            if pgrep -f "java -jar $APP_DIR/app.jar" > /dev/null; then
+            # Stop existing application before replacing JAR
+            if pgrep -f "java -jar" > /dev/null; then
               echo "🛑 Stopping existing application..."
-              pkill -f "java -jar $APP_DIR/app.jar" || true
+              pkill -f "java -jar" || true
               sleep 5
             fi
       
+            # Now copy the new JAR
+            cp -f "$LATEST_JAR" "$APP_DIR/app.jar"
+            echo "✅ JAR copied successfully"
+      
+            # Start application
             echo "🚀 Starting Spring Boot application..."
             nohup java -jar app.jar \
               --spring.datasource.password="${SPRING_DATASOURCE_PASSWORD}" \
@@ -92,7 +98,7 @@ jobs:
               if curl -fsS http://127.0.0.1:8080/actuator/health > /dev/null 2>&1; then
                 echo "✅ Application is healthy!"
                 echo "📋 Health status:"
-                curl -s http://127.0.0.1:8080/actuator/health | head -20
+                curl -s http://127.0.0.1:8080/actuator/health
                 echo ""
                 echo "📋 Recent logs:"
                 tail -n 30 app.log
@@ -105,4 +111,4 @@ jobs:
             echo "📋 Recent logs:"
             tail -n 100 app.log
             exit 1
-      
+
