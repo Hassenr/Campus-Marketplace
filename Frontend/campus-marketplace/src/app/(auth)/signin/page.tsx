@@ -1,23 +1,28 @@
 "use client";
 import React, { useState } from "react";
+import { login, register } from '@/src/lib/api/auth';
+import { useRouter } from 'next/navigation';
 
 type Mode = "signin" | "signup";
 
 export default function AuthPage() {
+    const router = useRouter();
     const [mode, setMode] = useState<Mode>("signin");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [name, setName] = useState("");
+    const [username, setUsername] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [college, setCollege] = useState("");
 
     const switchMode = (m: Mode) => {
         setError(null);
         setMode(m);
-        setEmail(''); setPassword(''); setName(''); setConfirmPassword('');
+        setEmail(''); setPassword(''); setUsername(''); setConfirmPassword(''); setCollege('');
     };
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -28,36 +33,32 @@ export default function AuthPage() {
                 setError("Passwords do not match");
                 return;
             }
-            // Minimal client-side checks done. Call sign-up API below.
         }
 
         setLoading(true);
         try {
-            // TODO: implement the real API call
-            // Example (replace URLs and body with your API):
-            /*
-            const res = await fetch('/api/auth/' + (mode === 'signin' ? 'signin' : 'signup'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: mode === 'signup' ? name : undefined,
+            if (mode === "signin") {
+                await login({
+                    username,
+                    password
+                });
+            } else {
+                await register({
+                    username,
                     email,
                     password,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data?.message || 'Authentication failed');
-            // On success: redirect / set auth state / store token
-            */
+                    college
+                });
+            }
 
-            // Temporary fake delay to simulate request:
-            await new Promise((r) => setTimeout(r, 600));
-            // Simulate success for now:
-            console.log(`${mode} succeeded (stub)`, { name, email });
-
-            // TODO: replace with navigation to protected area or set global auth state
-        } catch (err: any) {
-            setError(err?.message || "An unexpected error occurred");
+            // Redirect to home or dashboard on success
+            router.push('/');
+        } catch (err: unknown) {
+            if (err instanceof Error) {
+                setError(err.message);
+            } else {
+                setError("An unexpected error occurred");
+            }
         } finally {
             setLoading(false);
         }
@@ -125,28 +126,43 @@ export default function AuthPage() {
                     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         {mode === "signup" && (
                             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                <span style={{ fontSize: 13, color: "#333" }}>Full name</span>
+                                <span style={{ fontSize: 13, color: "#333" }}>Username</span>
                                 <input
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    placeholder="Your name"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    placeholder="Your username"
                                     required
                                     style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd" }}
                                 />
                             </label>
                         )}
 
-                        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            <span style={{ fontSize: 13, color: "#333" }}>Email</span>
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                placeholder="you@school.edu"
-                                required
-                                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd" }}
-                            />
-                        </label>
+                        {mode === "signin" && (
+                            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                <span style={{ fontSize: 13, color: "#333" }}>Username</span>
+                                <input
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    placeholder="Your username"
+                                    required
+                                    style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd" }}
+                                />
+                            </label>
+                        )}
+
+                        {mode === "signup" && (
+                            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                <span style={{ fontSize: 13, color: "#333" }}>Email</span>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="you@school.edu"
+                                    required
+                                    style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd" }}
+                                />
+                            </label>
+                        )}
 
                         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                             <span style={{ fontSize: 13, color: "#333" }}>Password</span>
@@ -161,17 +177,30 @@ export default function AuthPage() {
                         </label>
 
                         {mode === "signup" && (
-                            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                <span style={{ fontSize: 13, color: "#333" }}>Confirm password</span>
-                                <input
-                                    type="password"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    placeholder="Repeat password"
-                                    required
-                                    style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd" }}
-                                />
-                            </label>
+                            <>
+                                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    <span style={{ fontSize: 13, color: "#333" }}>Confirm password</span>
+                                    <input
+                                        type="password"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        placeholder="Repeat password"
+                                        required
+                                        style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd" }}
+                                    />
+                                </label>
+
+                                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    <span style={{ fontSize: 13, color: "#333" }}>College</span>
+                                    <input
+                                        value={college}
+                                        onChange={(e) => setCollege(e.target.value)}
+                                        placeholder="Your college name"
+                                        required
+                                        style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd" }}
+                                    />
+                                </label>
+                            </>
                         )}
 
                         {error && <div style={{ color: "crimson", fontSize: 13 }}>{error}</div>}
